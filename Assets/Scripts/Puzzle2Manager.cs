@@ -113,7 +113,10 @@ public class Puzzle2Manager : MonoBehaviour
     public Transform portalGuidePoint;
 
     [Header("Events")]
+    [Tooltip("Puzzle complete hote hi (cutscene shuru hone se pehle)")]
     public UnityEvent onPuzzleComplete;
+    [Tooltip("Cutscene khatam ho kar main camera wapis aane pe")]
+    public UnityEvent onCutsceneEnd;
 
     public bool Solved { get; private set; }
     public int Required => requiredCount > 0 ? Mathf.Min(requiredCount, sockets.Count) : sockets.Count;
@@ -274,6 +277,7 @@ public class Puzzle2Manager : MonoBehaviour
         if (fader) yield return fader.FadeOut(switchFadeTime);
         if (mainCam) mainCam.enabled = true;
         cutsceneCamera.gameObject.SetActive(false);
+        onCutsceneEnd?.Invoke();
         if (fader) yield return fader.FadeIn(switchFadeTime);
 
         SetControls(true);

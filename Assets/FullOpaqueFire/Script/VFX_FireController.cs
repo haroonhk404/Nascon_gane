@@ -5,14 +5,19 @@ namespace YourNamespace
     [ExecuteAlways]
     public class VFX_FireController : MonoBehaviour
     {
-        [Header("Réglages VFX Feu")]
+        [Header("Rï¿½glages VFX Feu")]
         [SerializeField] private Color fireColor = Color.red;
         [SerializeField, Range(0f, 2f)] private float fireIntensity = 1f;
         [SerializeField] private Vector3 fireWindDirection = Vector3.zero;
 
+        [Header("Fixed Start Size")]
+        [Tooltip("Is naam wale particle ka Start Size hamesha neeche wali value rahega")]
+        [SerializeField] private string fixedSizeParticle = "Volume_Out";
+        [SerializeField] private float fixedStartSize = 0.15f;
+
         private ParticleSystem[] fireParticleSystems;
-        private float[] defaultFireRateValues;        // Valeurs par défaut du spawn rate (Emission)
-        private float[] defaultFireStartSizeValues;     // Valeurs par défaut de la taille (Main > startSize)
+        private float[] defaultFireRateValues;        // Valeurs par dï¿½faut du spawn rate (Emission)
+        private float[] defaultFireStartSizeValues;     // Valeurs par dï¿½faut de la taille (Main > startSize)
         private Light fireLight; // Adding reference to Light component for intensity control
 
         private void Awake()
@@ -23,8 +28,8 @@ namespace YourNamespace
 
         private void OnValidate()
         {
-            // En mode éditeur, il se peut qu'Awake() ne soit pas appelé,
-            // donc on s'assure que les tableaux sont initialisés.
+            // En mode ï¿½diteur, il se peut qu'Awake() ne soit pas appelï¿½,
+            // donc on s'assure que les tableaux sont initialisï¿½s.
             if (fireParticleSystems == null || fireParticleSystems.Length == 0 ||
                 defaultFireRateValues == null || defaultFireStartSizeValues == null ||
                 defaultFireRateValues.Length != fireParticleSystems.Length ||
@@ -36,7 +41,7 @@ namespace YourNamespace
         }
 
         /// <summary>
-        /// Recherche tous les ParticleSystem enfants et sauvegarde leurs valeurs par défaut.
+        /// Recherche tous les ParticleSystem enfants et sauvegarde leurs valeurs par dï¿½faut.
         /// Le spawn rate est dans le module Emission et la taille dans le module Main (startSize).
         /// </summary>
         private void FindFireParticles()
@@ -62,12 +67,12 @@ namespace YourNamespace
         }
 
         /// <summary>
-        /// Applique les réglages sur chaque ParticleSystem enfant.
-        /// Les valeurs par défaut sont multipliées par fireIntensity, exactement comme pour le spawn rate.
+        /// Applique les rï¿½glages sur chaque ParticleSystem enfant.
+        /// Les valeurs par dï¿½faut sont multipliï¿½es par fireIntensity, exactement comme pour le spawn rate.
         /// </summary>
         private void ApplyFireSettings()
         {
-            // S'assurer que tous les tableaux sont initialisés correctement.
+            // S'assurer que tous les tableaux sont initialisï¿½s correctement.
             if (fireParticleSystems == null || fireParticleSystems.Length == 0 ||
                 defaultFireRateValues == null || defaultFireStartSizeValues == null ||
                 defaultFireRateValues.Length != fireParticleSystems.Length ||
@@ -89,7 +94,7 @@ namespace YourNamespace
                 // Appliquer la couleur
                 mainModule.startColor = fireColor;
 
-                // Modifier le spawn rate en multipliant la valeur par défaut par fireIntensity
+                // Modifier le spawn rate en multipliant la valeur par dï¿½faut par fireIntensity
                 float baseRate = defaultFireRateValues[i];
                 if (emissionModule.rateOverTime.mode == ParticleSystemCurveMode.Constant)
                 {
@@ -100,11 +105,20 @@ namespace YourNamespace
                     emissionModule.rateOverTime = new ParticleSystem.MinMaxCurve(baseRate * fireIntensity, baseRate * fireIntensity);
                 }
 
-                // Modifier la taille des particules de la même manière
-                float baseSize = defaultFireStartSizeValues[i];
-                mainModule.startSize = new ParticleSystem.MinMaxCurve(baseSize * fireIntensity);
+                // Modifier la taille des particules de la mï¿½me maniï¿½re
+                if (ps.name == fixedSizeParticle)
+                {
+                    // Volume_Out: hamesha fixed size
+                    mainModule.startSize3D = false;
+                    mainModule.startSize = new ParticleSystem.MinMaxCurve(fixedStartSize);
+                }
+                else
+                {
+                    float baseSize = defaultFireStartSizeValues[i];
+                    mainModule.startSize = new ParticleSystem.MinMaxCurve(baseSize * fireIntensity);
+                }
 
-                // Appliquer la direction du vent si le module Velocity over Lifetime est activé
+                // Appliquer la direction du vent si le module Velocity over Lifetime est activï¿½
                 if (velocityModule.enabled)
                 {
                     velocityModule.xMultiplier = fireWindDirection.x;
