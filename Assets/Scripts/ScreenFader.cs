@@ -1,11 +1,17 @@
 using System.Collections;
 using UnityEngine;
 
-/// Full-screen black CanvasGroup used to fade the screen out/in (e.g. for teleports).
+/// <summary>
+/// Canvas ke andar full-screen black Image banao, us pe CanvasGroup + ye script.
+/// Purane scripts (Portal.cs) ke liye bhi compatible: ScreenFader.Instance, FadeOut(duration), FadeIn(duration)
+/// </summary>
 [RequireComponent(typeof(CanvasGroup))]
 public class ScreenFader : MonoBehaviour
 {
     public static ScreenFader Instance { get; private set; }
+
+    public float fadeDuration = 0.6f;
+    public float holdBlack = 0.3f;
 
     CanvasGroup group;
 
@@ -23,34 +29,42 @@ public class ScreenFader : MonoBehaviour
         if (Instance == this) Instance = null;
     }
 
+    // ---- Default duration (LockedDoor use karta hai) ----
+    public IEnumerator FadeOut()
+    {
+        yield return Fade(0f, 1f, fadeDuration);
+        yield return new WaitForSecondsRealtime(holdBlack);
+    }
+
+    public IEnumerator FadeIn()
+    {
+        yield return Fade(1f, 0f, fadeDuration);
+    }
+
+    // ---- Custom duration (Portal.cs use karta hai) ----
     public IEnumerator FadeOut(float duration)
     {
-        yield return Fade(group.alpha, 1f, duration);
-        group.blocksRaycasts = true;
+        yield return Fade(0f, 1f, duration);
     }
 
     public IEnumerator FadeIn(float duration)
     {
-        group.blocksRaycasts = false;
-        yield return Fade(group.alpha, 0f, duration);
+        yield return Fade(1f, 0f, duration);
     }
 
     IEnumerator Fade(float from, float to, float duration)
     {
-        if (duration <= 0f)
-        {
-            group.alpha = to;
-            yield break;
-        }
+        if (!group) group = GetComponent<CanvasGroup>();
+        group.blocksRaycasts = true;
 
         float t = 0f;
         while (t < duration)
         {
-            t += Time.deltaTime;
-            group.alpha = Mathf.Lerp(from, to, t / duration);
+            t += Time.unscaledDeltaTime;
+            group.alpha = Mathf.Lerp(from, to, duration > 0f ? t / duration : 1f);
             yield return null;
         }
-
         group.alpha = to;
+        group.blocksRaycasts = to > 0.01f;
     }
 }
