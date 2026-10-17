@@ -31,7 +31,11 @@ public class Puzzle2ShadowEvent : MonoBehaviour
     public float cutsceneStartDelay = 0.5f;
     [Tooltip("Camera shadow ko follow kare (sirf ghoom kar dekhe, apni jagah se hile nahi)")]
     public bool cameraLooksAtShadow = true;
-    [Tooltip("Shadow ke guzarne ke baad camera kitni der aur rahe")]
+    [Tooltip("ON = shadow ke chalte chalte hi end fade ho jaye (rukta nazar nahi aayega)")]
+    public bool endWhileWalking = true;
+    [Tooltip("End wala fade kitna tez (seconds). Ye shadow ke pahunchne se itna pehle shuru hota hai")]
+    public float endFadeTime = 0.4f;
+    [Tooltip("Sirf jab 'End While Walking' OFF ho: shadow ruk jane ke baad camera kitni der aur rahe")]
     public float extraCutsceneTime = 1f;
     public bool fadeOnSwitch = true;
     public float switchFadeTime = 0.3f;
@@ -44,9 +48,31 @@ public class Puzzle2ShadowEvent : MonoBehaviour
     public Transform walkFrom;
     public Transform walkTo;
     public float walkDuration = 5f;
-    [Tooltip("Animator ka bool parameter jo walk chalaye (khali = default animation hi chalegi)")]
+    [Tooltip("Animator ka bool parameter jo walk chalaye (khali = skip)")]
     public string walkBoolParameter = "";
+    [Tooltip("Animator ka float parameter (jaise 'Speed'). Chalte waqt is mein Walk Speed Value jayegi")]
+    public string walkSpeedParameter = "Speed";
+    [Tooltip("Speed parameter ki value. CreepAnimator_Auto mein 4 se zyada = Run state (Crouch)")]
+    public float walkSpeedValue = 6f;
+    [Tooltip("Seedha ye state chalao (jaise 'Run' ya 'Creep|Crouch_Action'). Khali = parameters se")]
+    public string walkStateName = "";
     public bool hideShadowAfterWalk = true;
+
+    [Header("Cutscene Audio")]
+    [Tooltip("Cutscene ki music / dar wali awaaz (2D, har jagah ek jaisi)")]
+    public AudioClip cutsceneMusic;
+    [Range(0f, 1f)] public float musicVolume = 1f;
+    [Tooltip("Cutscene khatam hone pe music kitni der mein band ho (0 = chalti rahe)")]
+    public float musicFadeOut = 1f;
+    [Tooltip("Shadow ki awaaz: qadam / guraana (3D, shadow se aaye). Loop hoti hai")]
+    public AudioClip shadowSound;
+    [Range(0f, 1f)] public float shadowSoundVolume = 1f;
+    [Tooltip("Shadow ki awaaz kitni door tak sunai de (meter)")]
+    public float shadowSoundRange = 25f;
+    [Tooltip("ON = awaaz shadow ki jagah se aaye (door = dheemi). OFF = har jagah ek jaisi saaf")]
+    public bool shadowSound3D = true;
+    [Tooltip("Ek dafa bajne wali awaaz jab shadow nazar aaye (cheekh / jump scare)")]
+    public AudioClip shadowAppearClip;
 
     [Header("Fog (30 sec)")]
     public float fogTime = 30f;
@@ -60,6 +86,9 @@ public class Puzzle2ShadowEvent : MonoBehaviour
     [Tooltip("Camera kitna dagmagaye (degrees) jab fog poori ho")]
     public float wobbleAmount = 6f;
     public float wobbleSpeed = 0.6f;
+
+    [Tooltip("Fog (30 sec timer) shuru hote hi - jaise Creep ko SetActive(true)")]
+    public UnityEvent onFogStart;
 
     [Header("Timer UI (optional)")]
     public TMP_Text timerText;
@@ -208,58 +237,214 @@ public class Puzzle2ShadowEvent : MonoBehaviour
             if (fader) yield return fader.FadeIn(switchFadeTime);
         }
 
-        // Shadow walk
-        if (shadow)
+        // Audio shuru
+        StartCutsceneAudio();
+
+        // Shadow walk (alag coroutine mein chalta rahe, taake fade ke dauran bhi chalta dikhe)
+        walkDone = false;
+        Coroutine walk = shadow ? StartCoroutine(WalkShadow()) : null;
+        if (!shadow) walkDone = true;
+
+        float endFade = fader ? endFadeTime : 0f;
+
+        if (endWhileWalking)
         {
-            Transform st = shadow.transform;
-            Vector3 from = walkFrom ? walkFrom.position : st.position;
-            Vector3 to = walkTo ? walkTo.position : st.position + st.forward * 5f;
-
-            st.position = from;
-            Vector3 dir = to - from; dir.y = 0f;
-            if (dir.sqrMagnitude > 0.001f) st.rotation = Quaternion.LookRotation(dir);
-            shadow.SetActive(true);
-
-            Animator anim = shadow.GetComponentInChildren<Animator>();
-            if (anim && !string.IsNullOrEmpty(walkBoolParameter)) anim.SetBool(walkBoolParameter, true);
-
-            float d = Mathf.Max(0.01f, walkDuration);
-            float t = 0f;
-            while (t < d)
+            // Shadow ke pahunchne se 'endFade' pehle fade shuru -> chalte chalte black
+            float wait = Mathf.Max(0f, walkDuration - endFade);
+            float w = 0f;
+            while (w < wait) { w += Time.deltaTime; yield return null; }
+        }
+        else
+        {
+            while (!walkDone) yield return null;
+            float extra = 0f;
+            while (extra < extraCutsceneTime)
             {
-                t += Time.deltaTime;
-                st.position = Vector3.Lerp(from, to, t / d);
-                LookAtShadow(st);
+                extra += Time.deltaTime;
+                if (shadow) LookAtShadow(shadow.transform);
                 yield return null;
             }
-            st.position = to;
-            if (anim && !string.IsNullOrEmpty(walkBoolParameter)) anim.SetBool(walkBoolParameter, false);
         }
 
-        float extra = 0f;
-        while (extra < extraCutsceneTime)
-        {
-            extra += Time.deltaTime;
-            if (shadow) LookAtShadow(shadow.transform);
-            yield return null;
-        }
-
-        // Shadow cam -> main
+        // Shadow cam -> main (shadow abhi bhi chal raha hai jab tak screen black na ho)
+        if (fader) yield return fader.FadeOut(endFade > 0f ? endFade : switchFadeTime);
+        if (walk != null) StopCoroutine(walk);
+        StopShadowSound();
+        if (shadow && hideShadowAfterWalk) shadow.SetActive(false);
+        RestoreShadowAI();
+        if (musicFadeOut > 0f) StartCoroutine(FadeOutMusic(musicFadeOut));
         if (shadowCutsceneCam)
         {
-            if (fader) yield return fader.FadeOut(switchFadeTime);
-            if (shadow && hideShadowAfterWalk) shadow.SetActive(false);
             if (mainCam) mainCam.enabled = true;
             shadowCutsceneCam.gameObject.SetActive(false);
-            if (fader) yield return fader.FadeIn(switchFadeTime);
         }
-        else if (shadow && hideShadowAfterWalk) shadow.SetActive(false);
+        if (fader) yield return fader.FadeIn(switchFadeTime);
 
         SetControls(disableDuringCutscene, true);
         cutsceneRunning = false;
 
         if (startFogAfter) StartFog();
         else Debug.Log("[Puzzle2] Test cutscene khatam (fog nahi). J dobara dabao to phir chalega.");
+    }
+
+    bool walkDone;
+
+    IEnumerator WalkShadow()
+    {
+        Transform st = shadow.transform;
+        Vector3 from = walkFrom ? walkFrom.position : st.position;
+        Vector3 to = walkTo ? walkTo.position : st.position + st.forward * 5f;
+
+        st.position = from;
+        Vector3 dir = to - from; dir.y = 0f;
+        if (dir.sqrMagnitude > 0.001f) st.rotation = Quaternion.LookRotation(dir);
+        shadow.SetActive(true);
+        StartShadowAudio();
+
+        Animator anim = shadow.GetComponentInChildren<Animator>();
+        StartWalkAnim(anim);
+
+        float d = Mathf.Max(0.01f, walkDuration);
+        float t = 0f;
+        while (t < d)
+        {
+            t += Time.deltaTime;
+            st.position = Vector3.Lerp(from, to, t / d);
+            if (anim && !string.IsNullOrEmpty(walkSpeedParameter) && HasParam(anim, walkSpeedParameter))
+                anim.SetFloat(walkSpeedParameter, walkSpeedValue);   // har frame, taake koi aur script na badle
+            LookAtShadow(st);
+            yield return null;
+        }
+        st.position = to;
+
+        // Agar cutscene abhi chal raha hai (endWhileWalking OFF) to walk band
+        if (!endWhileWalking && anim)
+        {
+            if (!string.IsNullOrEmpty(walkBoolParameter) && HasParam(anim, walkBoolParameter)) anim.SetBool(walkBoolParameter, false);
+            if (!string.IsNullOrEmpty(walkSpeedParameter) && HasParam(anim, walkSpeedParameter)) anim.SetFloat(walkSpeedParameter, 0f);
+        }
+        walkDone = true;
+    }
+
+    void StartWalkAnim(Animator anim)
+    {
+        if (!anim) { Debug.LogWarning("[Shadow] Shadow mein Animator nahi mila"); return; }
+        anim.applyRootMotion = false;
+
+        // Shadow pe AI scripts / NavMesh ho to cutscene ke dauran band (warna position aur animation chheen lete hain)
+        pausedForWalk.Clear();
+        foreach (var mb in shadow.GetComponentsInChildren<MonoBehaviour>())
+        {
+            string n = mb.GetType().Name;
+            if ((n.Contains("CreepPatrolAI") || n.Contains("CreepAI")) && mb.enabled)
+            {
+                mb.enabled = false;
+                pausedForWalk.Add(mb);
+                Debug.Log($"[Shadow] '{n}' cutscene ke liye band kiya");
+            }
+        }
+        pausedAgent = shadow.GetComponentInChildren<UnityEngine.AI.NavMeshAgent>();
+        if (pausedAgent && pausedAgent.enabled) pausedAgent.enabled = false;
+        else pausedAgent = null;
+
+        if (!string.IsNullOrEmpty(walkStateName))
+        {
+            anim.CrossFadeInFixedTime(walkStateName, 0.1f);
+            Debug.Log($"[Shadow] State '{walkStateName}' chalayi");
+        }
+        if (!string.IsNullOrEmpty(walkBoolParameter) && HasParam(anim, walkBoolParameter)) anim.SetBool(walkBoolParameter, true);
+        if (!string.IsNullOrEmpty(walkSpeedParameter) && HasParam(anim, walkSpeedParameter)) anim.SetFloat(walkSpeedParameter, walkSpeedValue);
+    }
+
+    // ================= AUDIO =================
+    AudioSource musicSource;
+    AudioSource shadowSource;
+    bool shadowSourceCreated;
+
+    void StartCutsceneAudio()
+    {
+        if (cutsceneMusic)
+        {
+            if (!musicSource)
+            {
+                musicSource = gameObject.AddComponent<AudioSource>();
+                musicSource.playOnAwake = false;
+                musicSource.spatialBlend = 0f;   // 2D
+            }
+            musicSource.clip = cutsceneMusic;
+            musicSource.volume = musicVolume;
+            musicSource.loop = false;
+            musicSource.Play();
+        }
+    }
+
+    /// Shadow active hone ke baad chalao (band object pe awaaz nahi bajti)
+    void StartShadowAudio()
+    {
+        if (shadow && (shadowSound || shadowAppearClip))
+        {
+            shadowSource = shadow.GetComponent<AudioSource>();
+            if (!shadowSource)
+            {
+                shadowSource = shadow.AddComponent<AudioSource>();
+                shadowSourceCreated = true;
+            }
+            shadowSource.playOnAwake = false;
+            shadowSource.spatialBlend = shadowSound3D ? 1f : 0f;
+            shadowSource.rolloffMode = AudioRolloffMode.Linear;
+            shadowSource.minDistance = 2f;
+            shadowSource.maxDistance = shadowSoundRange;
+            shadowSource.volume = shadowSoundVolume;
+
+            if (shadowAppearClip) shadowSource.PlayOneShot(shadowAppearClip, shadowSoundVolume);
+            if (shadowSound)
+            {
+                shadowSource.clip = shadowSound;
+                shadowSource.loop = true;
+                shadowSource.Play();
+            }
+        }
+    }
+
+    void StopShadowSound()
+    {
+        if (!shadowSource) return;
+        shadowSource.Stop();
+        shadowSource.loop = false;
+        if (shadowSourceCreated) { Destroy(shadowSource); shadowSourceCreated = false; }
+        shadowSource = null;
+    }
+
+    IEnumerator FadeOutMusic(float time)
+    {
+        if (!musicSource || !musicSource.isPlaying) yield break;
+        float start = musicSource.volume;
+        float t = 0f;
+        while (t < time && musicSource)
+        {
+            t += Time.deltaTime;
+            musicSource.volume = Mathf.Lerp(start, 0f, t / time);
+            yield return null;
+        }
+        if (musicSource) { musicSource.Stop(); musicSource.volume = musicVolume; }
+    }
+
+    readonly System.Collections.Generic.List<MonoBehaviour> pausedForWalk = new System.Collections.Generic.List<MonoBehaviour>();
+    UnityEngine.AI.NavMeshAgent pausedAgent;
+
+    /// Cutscene ke baad shadow ki AI wapis ON (agar wahi creep baad mein patrol kare)
+    void RestoreShadowAI()
+    {
+        if (pausedAgent) pausedAgent.enabled = true;
+        foreach (var mb in pausedForWalk) if (mb) mb.enabled = true;
+        pausedForWalk.Clear();
+        pausedAgent = null;
+    }
+
+    static bool HasParam(Animator a, string name)
+    {
+        foreach (var p in a.parameters) if (p.name == name) return true;
+        return false;
     }
 
     void LookAtShadow(Transform st)
@@ -284,6 +469,7 @@ public class Puzzle2ShadowEvent : MonoBehaviour
         phase = Phase.Fog;
 
         if (interactor && !string.IsNullOrEmpty(warningMessage)) interactor.ShowMessage(warningMessage);
+        onFogStart?.Invoke();
     }
 
     void UpdateFog()

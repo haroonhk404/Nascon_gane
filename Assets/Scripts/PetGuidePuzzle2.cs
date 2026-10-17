@@ -35,6 +35,8 @@ public class PetGuidePuzzle2 : MonoBehaviour
     public bool startOnFirstGrab = true;
     [Tooltip("OFF = scene shuru hote hi guide (startOnFirstGrab OFF ho tab)")]
     public bool guideOnStart = true;
+    [Tooltip("Guide On Start ho to scene shuru ke kitne second baad pet pehli candle ki taraf jaye")]
+    public float startDelay = 2f;
 
     [Header("Movement")]
     public float travelSpeed = 4f;
@@ -73,12 +75,22 @@ public class PetGuidePuzzle2 : MonoBehaviour
         if (!interactor) interactor = FindAnyObjectByType<PlayerInteractor>();
 
         SnapToPlayer();
-        guiding = !startOnFirstGrab && guideOnStart;
+        guiding = false;
+        startTimer = (!startOnFirstGrab && guideOnStart) ? startDelay : -1f;
     }
+
+    float startTimer = -1f;
 
     void Update()
     {
         if (!player) return;
+
+        // 'startDelay' sec baad guiding ON (pehle candle ki taraf, phir lead)
+        if (!guiding && startTimer >= 0f)
+        {
+            startTimer -= Time.deltaTime;
+            if (startTimer <= 0f) { guiding = true; startTimer = -1f; Debug.Log("[Pet] Guiding shuru - pehli candle ki taraf"); }
+        }
 
         // Pehli candle uthate hi guiding ON
         if (!guiding && startOnFirstGrab && interactor && interactor.HeldCandle)
