@@ -1,5 +1,6 @@
 using System.Collections;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 /// <summary>
 /// Door pe lagao (collider zaroori). Locked hai jab tak puzzle solve na ho.
@@ -9,6 +10,10 @@ using UnityEngine;
 public class LockedDoor : MonoBehaviour, IInteractable
 {
     public bool isLocked = true;
+
+    [Header("Next Scene (optional)")]
+    [Tooltip("Agar yahan scene ka naam likha ho to teleport ki jagah ye scene load hoga. Khali = teleport")]
+    public string nextSceneName = "";
 
     [Header("Teleport")]
     [Tooltip("Dosri position - empty object jahan player jayega (rotation bhi use hoti hai)")]
@@ -38,14 +43,24 @@ public class LockedDoor : MonoBehaviour, IInteractable
 
     public void Unlock() => isLocked = false;
 
+    int progressCurrent, progressRequired;
+    string progressLabel = "";
+
+    /// Puzzle manager progress batata hai: "Door is Locked (3/9 candles placed)"
+    public void SetProgress(int current, int required, string label)
+    {
+        progressCurrent = current;
+        progressRequired = required;
+        progressLabel = label;
+    }
+
     public string GetPrompt(PlayerInteractor player)
     {
         if (used) return "";
         if (isLocked)
-        {
-            var m = CandlePuzzleManager.Instance;
-            return m ? $"{lockedText}  ({m.LitCount}/{m.requiredLitCount} candles lit)" : lockedText;
-        }
+            return progressRequired > 0
+                ? $"{lockedText}  ({progressCurrent}/{progressRequired} {progressLabel})"
+                : lockedText;
         return unlockText;
     }
 
@@ -72,6 +87,17 @@ public class LockedDoor : MonoBehaviour, IInteractable
         if (!fader) fader = ScreenFader.Instance;   // scene wala fader khud le lo
 
         if (fader) yield return fader.FadeOut();
+
+        // Naya scene load karna hai?
+        if (!string.IsNullOrEmpty(nextSceneName))
+        {
+            if (Application.CanStreamedLevelBeLoaded(nextSceneName))
+            {
+                SceneManager.LoadScene(nextSceneName);
+                yield break;
+            }
+            Debug.LogError($"LockedDoor: scene '{nextSceneName}' Build Profiles ki Scene List mein nahi hai! Teleport kar raha hoon.");
+        }
 
         Teleport(player.transform);
         if (pet) pet.SnapToPlayer();

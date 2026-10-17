@@ -29,6 +29,8 @@ public class PlayerInteractor : MonoBehaviour
     public LayerMask interactMask = ~0;
     public KeyCode interactKey = KeyCode.E;
     public float messageDuration = 2f;
+    [Tooltip("Cheez PLAYER ke jism se itne meter ke andar ho tabhi E kaam kare (camera se nahi). Upar latki candles ke liye 2.5-3")]
+    public float maxDistanceFromPlayer = 1.8f;
 
     [Header("Proximity (aim na bhi ho to paas wali cheez)")]
     public bool useProximity = true;
@@ -112,7 +114,11 @@ public class PlayerInteractor : MonoBehaviour
             if (!firstHit) firstHit = h.collider;
 
             var inter = h.collider.GetComponentInParent<IInteractable>();
-            if (inter != null) return inter;
+            if (inter != null)
+            {
+                if (TooFar(h.collider)) return null;   // camera se dikh raha hai magar player se door hai
+                return inter;
+            }
 
             // Solid (non-trigger) cheez beech mein aa gayi (wall) to ruk jao
             if (!h.collider.isTrigger) return null;
@@ -133,6 +139,7 @@ public class PlayerInteractor : MonoBehaviour
         foreach (var c in cols)
         {
             if (ShouldIgnore(c)) continue;
+            if (TooFar(c)) continue;
             var inter = c.GetComponentInParent<IInteractable>();
             if (inter == null) continue;
             if (string.IsNullOrEmpty(inter.GetPrompt(this))) continue;   // jo already lit hai woh skip
@@ -149,11 +156,28 @@ public class PlayerInteractor : MonoBehaviour
         return best;
     }
 
+    // Player ke jism (chest) se collider ka sab se qareeb point kitna door hai
+    bool TooFar(Collider c)
+    {
+        if (maxDistanceFromPlayer <= 0f) return false;
+        Vector3 chest = transform.position + Vector3.up * proximityHeight;
+        Vector3 closest = c.bounds.ClosestPoint(chest);
+        return (closest - chest).sqrMagnitude > maxDistanceFromPlayer * maxDistanceFromPlayer;
+    }
+
     void OnDrawGizmosSelected()
     {
-        if (!useProximity) return;
-        Gizmos.color = new Color(1f, 0.6f, 0f, 0.4f);
-        Gizmos.DrawWireSphere(transform.position + Vector3.up * proximityHeight, proximityRadius);
+        Vector3 chest = transform.position + Vector3.up * proximityHeight;
+        if (useProximity)
+        {
+            Gizmos.color = new Color(1f, 0.6f, 0f, 0.4f);
+            Gizmos.DrawWireSphere(chest, proximityRadius);
+        }
+        if (maxDistanceFromPlayer > 0f)
+        {
+            Gizmos.color = new Color(0.2f, 1f, 0.4f, 0.6f);
+            Gizmos.DrawWireSphere(chest, maxDistanceFromPlayer);
+        }
     }
 
     bool ShouldIgnore(Collider c)
